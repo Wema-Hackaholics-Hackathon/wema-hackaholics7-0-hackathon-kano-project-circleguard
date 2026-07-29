@@ -29,7 +29,16 @@ export async function approveMember(formData: FormData) {
     p_profile_id: profileId,
   });
   if (error) redirect(`/circles/${circleId}?error=approve_failed`);
+  const [{ count }, { data: circle }] = await Promise.all([
+    supabase.from("circle_members").select("id", { count: "exact", head: true }).eq("circle_id", circleId).eq("status", "active"),
+    supabase.from("circles").select("member_limit,status").eq("id", circleId).single(),
+  ]);
+  if (circle?.status === "forming" && (count ?? 0) >= circle.member_limit) {
+    await supabase.from("circles").update({ status: "active" }).eq("id", circleId);
+  }
   revalidatePath(`/circles/${circleId}`);
+  revalidatePath("/circles");
+  revalidatePath("/dashboard");
 }
 
 export async function rejectMember(formData: FormData) {
