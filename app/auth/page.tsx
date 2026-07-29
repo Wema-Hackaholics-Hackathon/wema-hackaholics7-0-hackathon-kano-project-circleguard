@@ -18,21 +18,23 @@ export default function AuthPage() {
     setLoading(true);
     setMessage("");
     const supabase = createClient();
+    const requestedNext = new URLSearchParams(window.location.search).get("next");
+    const next = requestedNext?.startsWith("/") ? requestedNext : "/dashboard";
 
     if (mode === "signup") {
       const { data, error } = await supabase.auth.signUp({ email, password });
       setLoading(false);
       if (error) return setMessage(error.message);
       if (!data.session) return setMessage("Email confirmation is still enabled in Supabase.");
-      router.replace("/onboarding");
+      router.replace(`/onboarding?next=${encodeURIComponent(next)}`);
       router.refresh();
       return;
     }
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) return setMessage(error.message);
-    router.replace("/dashboard");
+    router.replace(data.user.user_metadata.full_name ? next : `/onboarding?next=${encodeURIComponent(next)}`);
     router.refresh();
   }
 

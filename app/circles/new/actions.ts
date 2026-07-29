@@ -26,9 +26,11 @@ export async function createCircle(formData: FormData) {
     redirect("/circles/new?error=invalid");
   }
 
-  const { data, error } = await supabase
+  const circleId = crypto.randomUUID();
+  const { error } = await supabase
     .from("circles")
     .insert({
+      id: circleId,
       name,
       contribution_amount: contributionAmount,
       frequency,
@@ -37,14 +39,12 @@ export async function createCircle(formData: FormData) {
       payout_order_method: payoutOrderMethod,
       status: "forming",
       created_by: user.id,
-    })
-    .select("id")
-    .single();
+    });
 
-  if (error || !data) {
-    console.error("Circle creation failed", error?.message);
-    redirect("/circles/new?error=create_failed");
+  if (error) {
+    console.error("Circle creation failed", error.code, error.message, error.details);
+    redirect(`/circles/new?error=${encodeURIComponent(error.code || "create_failed")}`);
   }
 
-  redirect(`/circles/${data.id}`);
+  redirect(`/circles/${circleId}`);
 }

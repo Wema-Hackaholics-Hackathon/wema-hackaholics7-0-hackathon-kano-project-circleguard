@@ -15,7 +15,7 @@ import { signOut } from "@/app/dashboard/actions";
 
 const primary = [
   { label: "Overview", href: "/dashboard", icon: Home },
-  { label: "My circles", href: "/dashboard", icon: CircleDollarSign },
+  { label: "My circles", href: "/circles", icon: CircleDollarSign },
   { label: "Members", href: "/dashboard", icon: Users },
   { label: "Activity", href: "/dashboard", icon: Activity },
 ];
@@ -40,10 +40,7 @@ export function AppShell({
             <span className="grid size-10 place-items-center rounded-full bg-[#123f31] text-sm font-bold text-white">CG</span>
             <span><strong className="block text-[17px]">CircleGuard</strong><small className="text-xs text-[#84908b]">VERIFIED SAVINGS</small></span>
           </Link>
-          <Link href="/circles/new" className="mt-6 flex items-center justify-center gap-2 rounded-xl bg-[#123f31] px-4 py-3 text-sm font-semibold text-white hover:bg-[#0d3327]">
-            <Plus size={17} /> Create a circle
-          </Link>
-          <nav className="mt-7 space-y-7">
+          <nav className="mt-8 space-y-7">
             <NavGroup items={primary} active={active} />
             <NavGroup title="MANAGE" items={manage} active={active} />
             <NavGroup title="ACCOUNT" items={[

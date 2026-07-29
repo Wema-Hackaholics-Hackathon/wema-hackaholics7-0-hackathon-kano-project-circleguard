@@ -24,7 +24,8 @@ export default function OnboardingPage() {
     });
     setLoading(false);
     if (updateError) return setError(updateError.message);
-    router.replace("/dashboard");
+    const requestedNext = new URLSearchParams(window.location.search).get("next");
+    router.replace(requestedNext?.startsWith("/") ? requestedNext : "/dashboard");
     router.refresh();
   }
 
@@ -37,7 +38,7 @@ export default function OnboardingPage() {
         <p className="mt-2 text-[#65736e]">This name will appear in your savings circles.</p>
         <form className="mt-8 space-y-5" onSubmit={saveName}>
           <label className="block text-sm font-medium">Full name
-            <input className="mt-2 w-full rounded-xl border border-[#d8dfdc] px-4 py-3 outline-none focus:border-[#0f6b50] focus:ring-2 focus:ring-[#0f6b50]/15" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Musa Bello" autoComplete="name" required autoFocus />
+            <input className="mt-2 w-full rounded-xl border border-[#d8dfdc] px-4 py-3 outline-none focus:border-[#0f6b50] focus:ring-2 focus:ring-[#0f6b50]/15" value={name} onChange={(event) => setName(event.target.value)} placeholder="Enter your full name" autoComplete="name" required autoFocus />
           </label>
           {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</p>}
           <button disabled={loading} className="w-full rounded-xl bg-[#0f6b50] px-4 py-3.5 font-semibold text-white transition hover:bg-[#0b5942] disabled:opacity-60">
