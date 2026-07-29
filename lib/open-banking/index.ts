@@ -1,4 +1,4 @@
 import "server-only";
-import { MockOpenBankingAdapter } from "./mock-adapter";
+import { OpenBankingNigeriaSandboxAdapter } from "./sandbox-adapter";
 
-export const openBanking = new MockOpenBankingAdapter();
+export const openBanking = new OpenBankingNigeriaSandboxAdapter();

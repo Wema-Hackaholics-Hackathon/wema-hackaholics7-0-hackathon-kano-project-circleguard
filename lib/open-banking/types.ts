@@ -10,6 +10,9 @@ export type BankAccount = {
   accountName: string;
   maskedNumber: string;
   currency: "NGN";
+  availableBalance?: number;
+  source: "open_banking_nigeria_sandbox" | "local_mock";
+  isSharedSandboxFixture: boolean;
 };
 
 export type BankTransaction = {

@@ -1,0 +1,97 @@
+import { analyzeAccountTrend } from "@/lib/open-banking/trend-engine";
+import { demoBankProfiles, getDemoProfile, transactionsForCycles } from "@/lib/demo-banking/profiles";
+import { createClient } from "@/utils/supabase/server";
+
+export async function GET(request: Request) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const circleId = new URL(request.url).searchParams.get("circleId");
+  const { data: connection } = circleId
+    ? await supabase.from("demo_bank_connections").select("profile_key").eq("circle_id", circleId).eq("user_id", user.id).maybeSingle()
+    : { data: null };
+  return Response.json({ connectedProfileKey: connection?.profile_key ?? null, profiles: demoBankProfiles.map((profile) => ({
+    key: profile.key,
+    name: profile.name,
+    bankName: profile.bankName,
+    accountNumber: profile.accountNumber,
+    occupation: profile.occupation,
+    openingBalance: profile.openingBalance,
+  })) });
+}
+
+export async function POST(request: Request) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const body = await request.json() as { action?: string; circleId?: string; profileKey?: string; contributionAmount?: number };
+  if (!body.circleId) return Response.json({ error: "Circle is required" }, { status: 400 });
+
+  if (body.action === "connect") {
+    const profile = getDemoProfile(body.profileKey ?? "");
+    if (!profile) return Response.json({ error: "Choose a demo account" }, { status: 400 });
+    const { error } = await supabase.from("demo_bank_connections").upsert({ circle_id: body.circleId, user_id: user.id, profile_key: profile.key }, { onConflict: "circle_id,user_id" });
+    if (error) return Response.json({ error: "Run the demo simulator SQL patch in Supabase first." }, { status: 500 });
+    return Response.json({ connected: true });
+  }
+
+  if (body.action === "disconnect") {
+    const { error } = await supabase.from("demo_bank_connections").delete().eq("circle_id", body.circleId).eq("user_id", user.id);
+    if (error) return Response.json({ error: "Could not disconnect this account. Run the updated simulator SQL patch first." }, { status: 500 });
+    return Response.json({ disconnected: true });
+  }
+
+  if (body.action === "analyze") {
+    const { data: connection } = await supabase.from("demo_bank_connections").select("profile_key").eq("circle_id", body.circleId).eq("user_id", user.id).maybeSingle();
+    const profile = getDemoProfile(connection?.profile_key ?? "");
+    if (!profile) return Response.json({ error: "Connect a demo account first." }, { status: 400 });
+    const { count } = await supabase.from("circle_cycles").select("id", { count: "exact", head: true }).eq("circle_id", body.circleId);
+    const transactions = transactionsForCycles(profile, Number(body.contributionAmount) || 0, Math.max(count ?? 0, 1));
+    return Response.json({ profile: publicProfile(profile), trend: analyzeAccountTrend(transactions, "active") });
+  }
+
+  if (body.action === "simulate") {
+    const { data: membership } = await supabase.from("circle_members").select("role").eq("circle_id", body.circleId).eq("profile_id", user.id).eq("status", "active").maybeSingle();
+    if (membership?.role !== "admin") return Response.json({ error: "Only the circle administrator can simulate a cycle." }, { status: 403 });
+    const { data: circle } = await supabase.from("circles").select("contribution_amount,frequency,start_date").eq("id", body.circleId).single();
+    if (!circle) return Response.json({ error: "Circle not found" }, { status: 404 });
+    const { data: latest } = await supabase.from("circle_cycles").select("cycle_number").eq("circle_id", body.circleId).order("cycle_number", { ascending: false }).limit(1).maybeSingle();
+    const cycleNumber = (latest?.cycle_number ?? 0) + 1;
+    if (cycleNumber > 8) return Response.json({ error: "All 8 demo cycles have been simulated." }, { status: 400 });
+    const dueDate = nextDueDate(circle.start_date, circle.frequency, cycleNumber);
+    const { data: cycle, error: cycleError } = await supabase.from("circle_cycles").insert({ circle_id: body.circleId, cycle_number: cycleNumber, due_date: dueDate, created_by: user.id }).select("id").single();
+    if (cycleError || !cycle) return Response.json({ error: "Run the demo simulator SQL patch in Supabase first." }, { status: 500 });
+    const { data: connections } = await supabase.from("demo_bank_connections").select("user_id,profile_key").eq("circle_id", body.circleId);
+    for (const connection of connections ?? []) {
+      const profile = getDemoProfile(connection.profile_key);
+      if (!profile) continue;
+      const outcome = profile.outcomes[cycleNumber - 1];
+      const transactions = transactionsForCycles(profile, Number(circle.contribution_amount), cycleNumber);
+      const trend = analyzeAccountTrend(transactions, "active");
+      const paidAt = outcome === "failed" ? null : paymentDate(dueDate, outcome);
+      await supabase.from("demo_contributions").insert({ cycle_id: cycle.id, circle_id: body.circleId, profile_id: connection.user_id, amount: circle.contribution_amount, outcome, paid_at: paidAt });
+      await supabase.from("readiness_assessments").insert({ cycle_id: cycle.id, circle_id: body.circleId, profile_id: connection.user_id, score: trend.score, readiness: trend.readiness, inflow_trend: trend.inflowTrend, on_time_rate: trend.onTimeRate, reasons: trend.reasons });
+    }
+    return Response.json({ cycleNumber, connectedMembers: connections?.length ?? 0 });
+  }
+
+  return Response.json({ error: "Unknown action" }, { status: 400 });
+}
+
+function publicProfile(profile: ReturnType<typeof getDemoProfile> & {}) {
+  if (!profile) return null;
+  return { key: profile.key, name: profile.name, bankName: profile.bankName, occupation: profile.occupation, maskedNumber: `•••• ${profile.accountNumber.slice(-4)}`, availableBalance: profile.openingBalance };
+}
+
+function nextDueDate(startDate: string, frequency: string, cycleNumber: number) {
+  const date = new Date(`${startDate}T12:00:00Z`);
+  if (frequency === "weekly") date.setUTCDate(date.getUTCDate() + (cycleNumber - 1) * 7);
+  else date.setUTCMonth(date.getUTCMonth() + cycleNumber - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function paymentDate(dueDate: string, outcome: string) {
+  const date = new Date(`${dueDate}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + (outcome === "early" ? -2 : outcome === "late" ? 3 : 0));
+  return date.toISOString();
+}

@@ -19,6 +19,8 @@ export class MockOpenBankingAdapter implements OpenBankingAdapter {
       accountName: memberName,
       maskedNumber: "•••• 4821",
       currency: "NGN" as const,
+      source: "local_mock" as const,
+      isSharedSandboxFixture: false,
     }];
   }
 
@@ -40,7 +42,7 @@ export class MockOpenBankingAdapter implements OpenBankingAdapter {
     return transactions;
   }
 
-  async getMandateStatus(_memberId: string) {
+  async getMandateStatus() {
     await wait(250);
     return "active" as const;
   }
