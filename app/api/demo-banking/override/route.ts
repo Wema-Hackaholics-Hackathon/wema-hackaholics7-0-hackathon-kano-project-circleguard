@@ -1,6 +1,5 @@
 import { createClient } from "@/utils/supabase/server";
 import { guardRiskLevel, payoutRecipient } from "@/lib/demo-banking/guard-engine";
-import { getGuardOverride, requestGuardOverride, voteOnGuardOverride } from "@/lib/demo-banking/override-store";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -27,19 +26,40 @@ async function handle(_request: Request, circleId: string, cycleNumber: number, 
   const { data: assessment } = await supabase.from("readiness_assessments").select("readiness").eq("cycle_id", cycle.id).eq("profile_id", beneficiary.profile_id).maybeSingle();
   if (guardRiskLevel(assessment?.readiness) === "green") return Response.json({ error: "Green payouts do not require an override." }, { status: 400 });
 
-  let override = getGuardOverride(circleId, cycleNumber);
   if (action === "request") {
     if (user.id !== beneficiary.profile_id) return Response.json({ error: "Only the scheduled payout recipient can request full release." }, { status: 403 });
     const reason = String(body?.reason ?? "").trim().slice(0, 200);
     if (reason.length < 5) return Response.json({ error: "Add a short reason for the group." }, { status: 400 });
-    override = requestGuardOverride(circleId, cycleNumber, beneficiary.profile_id, reason);
+    const { error } = await supabase.rpc("request_guard_override", { p_circle_id: circleId, p_cycle_number: cycleNumber, p_reason: reason });
+    if (error) return Response.json({ error: error.message }, { status: 400 });
   } else if (action === "vote") {
-    if (!override) return Response.json({ error: "No full-release request exists." }, { status: 404 });
     if (user.id === beneficiary.profile_id) return Response.json({ error: "The recipient cannot vote on their own request." }, { status: 403 });
     if (!body?.vote || !["approve", "reject"].includes(body.vote)) return Response.json({ error: "Choose a vote." }, { status: 400 });
-    override = voteOnGuardOverride(circleId, cycleNumber, user.id, body.vote, members.length - 1);
+    const { error } = await supabase.rpc("vote_guard_override", { p_circle_id: circleId, p_cycle_number: cycleNumber, p_vote: body.vote });
+    if (error) return Response.json({ error: error.message }, { status: 400 });
   }
-  const approvals = Object.values(override?.votes ?? {}).filter((vote) => vote === "approve").length;
-  const rejections = Object.values(override?.votes ?? {}).filter((vote) => vote === "reject").length;
-  return Response.json({ viewerIsBeneficiary: user.id === beneficiary.profile_id, override: override ? { ...override, votes: undefined, approvals, rejections, requiredApprovals: Math.max(1, Math.floor((members.length - 1) / 2) + 1), currentUserVote: override.votes[user.id] ?? null, isBeneficiary: user.id === beneficiary.profile_id } : null });
+  const { data: savedOverride } = await supabase
+    .from("guard_override_requests")
+    .select("id,beneficiary_id,reason,status")
+    .eq("circle_id", circleId)
+    .eq("cycle_id", cycle.id)
+    .maybeSingle();
+  const { data: votes } = savedOverride
+    ? await supabase.from("guard_override_votes").select("voter_id,vote").eq("request_id", savedOverride.id)
+    : { data: [] };
+  const approvals = votes?.filter((item) => item.vote === "approve").length ?? 0;
+  const rejections = votes?.filter((item) => item.vote === "reject").length ?? 0;
+  const currentUserVote = votes?.find((item) => item.voter_id === user.id)?.vote ?? null;
+  return Response.json({
+    viewerIsBeneficiary: user.id === beneficiary.profile_id,
+    override: savedOverride ? {
+      reason: savedOverride.reason,
+      status: savedOverride.status,
+      approvals,
+      rejections,
+      requiredApprovals: Math.max(1, Math.floor((members.length - 1) / 2) + 1),
+      currentUserVote,
+      isBeneficiary: savedOverride.beneficiary_id === user.id,
+    } : null,
+  });
 }

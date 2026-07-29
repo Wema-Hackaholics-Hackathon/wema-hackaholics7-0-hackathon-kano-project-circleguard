@@ -3,7 +3,6 @@ import { availableBalanceForCycle, demoBankProfiles, getDemoProfile, transaction
 import { createClient } from "@/utils/supabase/server";
 import { guardProtectedCycles, guardRiskLevel, payoutRecipient } from "@/lib/demo-banking/guard-engine";
 import type { TrendResult } from "@/lib/open-banking/types";
-import { isGuardOverrideApproved } from "@/lib/demo-banking/override-store";
 
 export async function GET(request: Request) {
   const supabase = await createClient();
@@ -83,6 +82,15 @@ export async function POST(request: Request) {
     if (!activeMembers?.length) return Response.json({ error: "This circle has no active members." }, { status: 400 });
     const members = activeMembers as unknown as Array<{ profile_id: string; payout_position: number | null; profiles: { full_name: string } | null }>;
     const resolvedConnections = resolveDemoConnections(members, connections ?? []);
+    const { data: approvedOverrides } = await supabase
+      .from("guard_override_requests")
+      .select("circle_cycles(cycle_number)")
+      .eq("circle_id", body.circleId)
+      .eq("status", "approved");
+    const approvedOverrideCycles = new Set((approvedOverrides ?? []).flatMap((item) => {
+      const cycle = item.circle_cycles as unknown as { cycle_number: number } | null;
+      return cycle ? [cycle.cycle_number] : [];
+    }));
     const { data: latest } = await supabase.from("circle_cycles").select("cycle_number").eq("circle_id", body.circleId).order("cycle_number", { ascending: false }).limit(1).maybeSingle();
     const cycleNumber = (latest?.cycle_number ?? 0) + 1;
     if (cycleNumber > 8) return Response.json({ error: "All 8 demo cycles have been simulated." }, { status: 400 });
@@ -95,7 +103,7 @@ export async function POST(request: Request) {
     for (const connection of resolvedConnections) {
       const profile = getDemoProfile(connection.profile_key);
       if (!profile) continue;
-      const coveredByGuard = hasGuardCoverage(body.circleId, connection.user_id, cycleNumber, members, resolvedConnections, Number(circle.contribution_amount));
+      const coveredByGuard = hasGuardCoverage(connection.user_id, cycleNumber, members, resolvedConnections, Number(circle.contribution_amount), approvedOverrideCycles);
       const forcedOutcome = demoScenario === "green" ? "on_time" : demoScenario === "amber" ? "late" : demoScenario === "red" ? "failed" : null;
       const outcome = coveredByGuard ? "on_time" : connection.user_id === beneficiary.profile_id && forcedOutcome ? forcedOutcome : profile.outcomes[cycleNumber - 1];
       // Predict this cycle using only information that existed before its due date.
@@ -175,15 +183,15 @@ function resolveDemoConnections(
 }
 
 function hasGuardCoverage(
-  circleId: string,
   profileId: string,
   cycleNumber: number,
   members: Array<{ profile_id: string; payout_position: number | null }>,
   connections: Array<{ user_id: string; profile_key: string }>,
   contributionAmount: number,
+  approvedOverrideCycles: Set<number>,
 ) {
   for (let sourceCycle = Math.max(1, cycleNumber - 2); sourceCycle < cycleNumber; sourceCycle += 1) {
-    if (isGuardOverrideApproved(circleId, sourceCycle)) continue;
+    if (approvedOverrideCycles.has(sourceCycle)) continue;
     const beneficiary = payoutRecipient(members, sourceCycle);
     if (!beneficiary || beneficiary.profile_id !== profileId) continue;
     const connection = connections.find((item) => item.user_id === profileId);
