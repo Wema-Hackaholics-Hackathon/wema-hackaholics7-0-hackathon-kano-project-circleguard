@@ -50,5 +50,12 @@ export async function createCircle(formData: FormData) {
 
   await supabase.from("demo_bank_connections").upsert({ circle_id: circleId, user_id: user.id, profile_key: bankProfileKey }, { onConflict: "circle_id,user_id" });
 
-  redirect(`/circles/${circleId}`);
+  const { data: invitation, error: invitationError } = await supabase
+    .from("invitations")
+    .insert({ circle_id: circleId, invited_by: user.id })
+    .select("token")
+    .single();
+  if (invitationError || !invitation) redirect(`/circles/${circleId}?error=invite_failed`);
+
+  redirect(`/circles/${circleId}?invite=${invitation.token}`);
 }

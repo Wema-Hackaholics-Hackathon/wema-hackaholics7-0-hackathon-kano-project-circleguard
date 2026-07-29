@@ -75,12 +75,12 @@ export async function POST(request: Request) {
     if (!circle) return Response.json({ error: "Circle not found" }, { status: 404 });
     if (circle.status !== "active") return Response.json({ error: "The circle must be full and active before cycles can be simulated." }, { status: 400 });
     const [{ data: activeMembers }, { data: connections }] = await Promise.all([
-      supabase.from("circle_members").select("profile_id,payout_position").eq("circle_id", body.circleId).eq("status", "active"),
+      supabase.from("circle_members").select("profile_id,payout_position,profiles(full_name)").eq("circle_id", body.circleId).eq("status", "active"),
       supabase.from("demo_bank_connections").select("user_id,profile_key").eq("circle_id", body.circleId),
     ]);
-    if (!activeMembers?.length || (connections?.length ?? 0) !== activeMembers.length) {
-      return Response.json({ error: "Every member must open this circle once so their connected demo account can be linked before simulation." }, { status: 400 });
-    }
+    if (!activeMembers?.length) return Response.json({ error: "This circle has no active members." }, { status: 400 });
+    const members = activeMembers as unknown as Array<{ profile_id: string; payout_position: number | null; profiles: { full_name: string } | null }>;
+    const resolvedConnections = resolveDemoConnections(members, connections ?? []);
     const { data: latest } = await supabase.from("circle_cycles").select("cycle_number").eq("circle_id", body.circleId).order("cycle_number", { ascending: false }).limit(1).maybeSingle();
     const cycleNumber = (latest?.cycle_number ?? 0) + 1;
     if (cycleNumber > 8) return Response.json({ error: "All 8 demo cycles have been simulated." }, { status: 400 });
@@ -88,10 +88,10 @@ export async function POST(request: Request) {
     const { data: cycle, error: cycleError } = await supabase.from("circle_cycles").insert({ circle_id: body.circleId, cycle_number: cycleNumber, due_date: dueDate, created_by: user.id }).select("id").single();
     if (cycleError || !cycle) return Response.json({ error: "Run the demo simulator SQL patch in Supabase first." }, { status: 500 });
     const trends = new Map<string, ReturnType<typeof analyzeAccountTrend>>();
-    for (const connection of connections ?? []) {
+    for (const connection of resolvedConnections) {
       const profile = getDemoProfile(connection.profile_key);
       if (!profile) continue;
-      const coveredByGuard = hasGuardCoverage(connection.user_id, cycleNumber, activeMembers, connections ?? [], Number(circle.contribution_amount));
+      const coveredByGuard = hasGuardCoverage(connection.user_id, cycleNumber, members, resolvedConnections, Number(circle.contribution_amount));
       const outcome = coveredByGuard ? "on_time" : profile.outcomes[cycleNumber - 1];
       // Predict this cycle using only information that existed before its due date.
       // The current cycle's simulated outcome must not influence its own prediction.
@@ -107,10 +107,10 @@ export async function POST(request: Request) {
       await supabase.from("demo_contributions").insert({ cycle_id: cycle.id, circle_id: body.circleId, profile_id: connection.user_id, amount: circle.contribution_amount, outcome, paid_at: paidAt });
       await supabase.from("readiness_assessments").insert({ cycle_id: cycle.id, circle_id: body.circleId, profile_id: connection.user_id, score: trend.score, readiness: trend.readiness, inflow_trend: trend.inflowTrend, on_time_rate: trend.onTimeRate, reasons: trend.reasons });
     }
-    const beneficiary = payoutRecipient(activeMembers, cycleNumber)!;
+    const beneficiary = payoutRecipient(members, cycleNumber)!;
     const riskLevel = guardRiskLevel(trends.get(beneficiary.profile_id)?.readiness);
     const protectedCycles = guardProtectedCycles(riskLevel, cycleNumber);
-    return Response.json({ cycleNumber, connectedMembers: connections?.length ?? 0, riskLevel, protectedCycles });
+    return Response.json({ cycleNumber, connectedMembers: resolvedConnections.length, riskLevel, protectedCycles });
   }
 
   return Response.json({ error: "Unknown action" }, { status: 400 });
@@ -132,6 +132,22 @@ function paymentDate(dueDate: string, outcome: string) {
   const date = new Date(`${dueDate}T12:00:00Z`);
   date.setUTCDate(date.getUTCDate() + (outcome === "early" ? -2 : outcome === "late" ? 3 : 0));
   return date.toISOString();
+}
+
+function resolveDemoConnections(
+  members: Array<{ profile_id: string; payout_position: number | null; profiles: { full_name: string } | null }>,
+  savedConnections: Array<{ user_id: string; profile_key: string }>,
+) {
+  const usedKeys = new Set(savedConnections.map((connection) => connection.profile_key));
+  return members.map((member, index) => {
+    const saved = savedConnections.find((connection) => connection.user_id === member.profile_id);
+    if (saved) return saved;
+    const memberName = member.profiles?.full_name?.trim().toLowerCase();
+    const nameMatch = demoBankProfiles.find((profile) => !usedKeys.has(profile.key) && profile.name.toLowerCase() === memberName);
+    const availableProfile = nameMatch ?? demoBankProfiles.find((profile) => !usedKeys.has(profile.key)) ?? demoBankProfiles[index % demoBankProfiles.length];
+    usedKeys.add(availableProfile.key);
+    return { user_id: member.profile_id, profile_key: availableProfile.key };
+  });
 }
 
 function hasGuardCoverage(
