@@ -1,12 +1,10 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
 import { ArrowRight, ShieldCheck } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 
 export default function AuthPage() {
-  const router = useRouter();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,19 +21,16 @@ export default function AuthPage() {
 
     if (mode === "signup") {
       const { data, error } = await supabase.auth.signUp({ email, password });
-      setLoading(false);
-      if (error) return setMessage(error.message);
-      if (!data.session) return setMessage("Email confirmation is still enabled in Supabase.");
-      router.replace(`/onboarding?next=${encodeURIComponent(next)}`);
-      router.refresh();
+      if (error) { setLoading(false); return setMessage(error.message); }
+      if (!data.session) { setLoading(false); return setMessage("Email confirmation is still enabled in Supabase."); }
+      window.location.replace(`/onboarding?next=${encodeURIComponent(next)}`);
       return;
     }
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (error) return setMessage(error.message);
-    router.replace(data.user.user_metadata.full_name ? next : `/onboarding?next=${encodeURIComponent(next)}`);
-    router.refresh();
+    if (error) { setLoading(false); return setMessage(error.message); }
+    const destination = data.user.user_metadata.full_name ? next : `/onboarding?next=${encodeURIComponent(next)}`;
+    window.location.replace(destination);
   }
 
   function switchMode(nextMode: "signin" | "signup") {
