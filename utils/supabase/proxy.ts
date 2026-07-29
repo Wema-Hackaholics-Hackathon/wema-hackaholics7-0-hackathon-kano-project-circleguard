@@ -23,5 +23,11 @@ export async function updateSession(request: NextRequest) {
   if (!user && request.nextUrl.pathname.startsWith("/dashboard")) {
     return NextResponse.redirect(new URL("/auth", request.url));
   }
+  if (user && !user.user_metadata.full_name && request.nextUrl.pathname.startsWith("/dashboard")) {
+    return NextResponse.redirect(new URL("/onboarding", request.url));
+  }
+  if (user?.user_metadata.full_name && request.nextUrl.pathname === "/onboarding") {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
   return response;
 }
