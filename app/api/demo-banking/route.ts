@@ -68,21 +68,34 @@ export async function POST(request: Request) {
     if (!body.circleId) return Response.json({ error: "Circle is required" }, { status: 400 });
     const { data: membership } = await supabase.from("circle_members").select("role").eq("circle_id", body.circleId).eq("profile_id", user.id).eq("status", "active").maybeSingle();
     if (membership?.role !== "admin") return Response.json({ error: "Only the circle administrator can simulate a cycle." }, { status: 403 });
-    const { data: circle } = await supabase.from("circles").select("contribution_amount,frequency,start_date").eq("id", body.circleId).single();
+    const { data: circle } = await supabase.from("circles").select("contribution_amount,frequency,start_date,status").eq("id", body.circleId).single();
     if (!circle) return Response.json({ error: "Circle not found" }, { status: 404 });
+    if (circle.status !== "active") return Response.json({ error: "The circle must be full and active before cycles can be simulated." }, { status: 400 });
+    const [{ data: activeMembers }, { data: connections }] = await Promise.all([
+      supabase.from("circle_members").select("profile_id").eq("circle_id", body.circleId).eq("status", "active"),
+      supabase.from("demo_bank_connections").select("user_id,profile_key").eq("circle_id", body.circleId),
+    ]);
+    if (!activeMembers?.length || (connections?.length ?? 0) !== activeMembers.length) {
+      return Response.json({ error: "Every member must open this circle once so their connected demo account can be linked before simulation." }, { status: 400 });
+    }
     const { data: latest } = await supabase.from("circle_cycles").select("cycle_number").eq("circle_id", body.circleId).order("cycle_number", { ascending: false }).limit(1).maybeSingle();
     const cycleNumber = (latest?.cycle_number ?? 0) + 1;
     if (cycleNumber > 8) return Response.json({ error: "All 8 demo cycles have been simulated." }, { status: 400 });
     const dueDate = nextDueDate(circle.start_date, circle.frequency, cycleNumber);
     const { data: cycle, error: cycleError } = await supabase.from("circle_cycles").insert({ circle_id: body.circleId, cycle_number: cycleNumber, due_date: dueDate, created_by: user.id }).select("id").single();
     if (cycleError || !cycle) return Response.json({ error: "Run the demo simulator SQL patch in Supabase first." }, { status: 500 });
-    const { data: connections } = await supabase.from("demo_bank_connections").select("user_id,profile_key").eq("circle_id", body.circleId);
     for (const connection of connections ?? []) {
       const profile = getDemoProfile(connection.profile_key);
       if (!profile) continue;
       const outcome = profile.outcomes[cycleNumber - 1];
-      const transactions = transactionsForCycles(profile, Number(circle.contribution_amount), cycleNumber);
-      const trend = analyzeAccountTrend(transactions, "active");
+      // Predict this cycle using only information that existed before its due date.
+      // The current cycle's simulated outcome must not influence its own prediction.
+      const previousTransactions = transactionsForCycles(
+        profile,
+        Number(circle.contribution_amount),
+        cycleNumber - 1,
+      );
+      const trend = analyzeAccountTrend(previousTransactions, "active");
       const paidAt = outcome === "failed" ? null : paymentDate(dueDate, outcome);
       await supabase.from("demo_contributions").insert({ cycle_id: cycle.id, circle_id: body.circleId, profile_id: connection.user_id, amount: circle.contribution_amount, outcome, paid_at: paidAt });
       await supabase.from("readiness_assessments").insert({ cycle_id: cycle.id, circle_id: body.circleId, profile_id: connection.user_id, score: trend.score, readiness: trend.readiness, inflow_trend: trend.inflowTrend, on_time_rate: trend.onTimeRate, reasons: trend.reasons });

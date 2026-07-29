@@ -19,7 +19,9 @@ export function analyzeAccountTrend(transactions: BankTransaction[], mandateStat
   const onTime = completed.filter((transaction) => !transaction.dueAt || new Date(transaction.occurredAt) <= new Date(transaction.dueAt)).length;
   const onTimeRate = contributions.length ? Math.round((onTime / contributions.length) * 100) : 0;
 
-  const paymentPoints = Math.round(onTimeRate * 0.4);
+  // New members have account history but no CircleGuard payment record yet,
+  // so start payment behaviour at a neutral 50% instead of treating it as 0%.
+  const paymentPoints = contributions.length ? Math.round(onTimeRate * 0.4) : 20;
   const trendPoints = inflowTrend === "growing" ? 25 : inflowTrend === "stable" ? 20 : inflowTrend === "reducing" ? 10 : 5;
   const mandatePoints = mandateStatus === "active" ? 20 : 0;
   const failurePoints = Math.max(0, 15 - failedContributions * 8);
@@ -27,15 +29,17 @@ export function analyzeAccountTrend(transactions: BankTransaction[], mandateStat
 
   const reasons: string[] = [];
   reasons.push(`Recent account inflows are ${inflowTrend === "insufficient_data" ? "not yet sufficient to assess" : inflowTrend}`);
-  reasons.push(`${onTime} of ${contributions.length} contributions were completed on time`);
+  reasons.push(contributions.length ? `${onTime} of ${contributions.length} contributions were completed on time` : "No previous CircleGuard contribution history yet");
   reasons.push(`Contribution mandate is ${mandateStatus}`);
   if (failedContributions) reasons.push(`${failedContributions} contribution attempt${failedContributions === 1 ? "" : "s"} failed`);
 
-  const readiness = mandateStatus !== "active" || !completed.length
+  const readiness = mandateStatus !== "active"
     ? "action_required"
-    : score >= 85
+    : score >= 80
       ? "ready"
-      : "protection_recommended";
+      : score >= 55
+        ? "protection_recommended"
+        : "action_required";
 
   return { inflowTrend, monthlyInflows, onTimeRate, completedContributions: completed.length, failedContributions, mandateStatus, score, readiness, reasons };
 }
