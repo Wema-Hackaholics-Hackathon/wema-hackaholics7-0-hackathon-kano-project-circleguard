@@ -63,7 +63,7 @@ export default async function CirclePage({ params, searchParams }: { params: Pro
     const { data: automaticInvite } = await supabase.from("invitations").insert({ circle_id: id, invited_by: user!.id }).select("token").single();
     visibleInviteToken = automaticInvite?.token;
   }
-  const liveVersion = circleLiveVersion(circle.status, members);
+  const liveVersion = circleLiveVersion(circle.status, members, cycleRowsResult.data?.[0]?.cycle_number ?? 0);
   const cycleRows = cycleRowsResult.data;
   const cycleIds = (cycleRows ?? []).map((cycle) => cycle.id);
   const [{ data: assessmentRows }, { data: contributionRows }] = cycleIds.length > 0
@@ -94,7 +94,7 @@ export default async function CirclePage({ params, searchParams }: { params: Pro
   const payout = Number(circle.contribution_amount) * circle.member_limit;
 
   return <AppShell active="My circles"><main className="p-5 sm:p-7 xl:p-10"><div className="mx-auto max-w-[1050px]">
-    {isAdmin && <CircleLiveRefresh circleId={id} initialVersion={liveVersion} />}
+    <CircleLiveRefresh circleId={id} initialVersion={liveVersion} />
     <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm font-medium text-[#66736d]"><ArrowLeft size={16} /> Back to overview</Link>
     <div className="mt-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><span className="rounded-full border border-[#cfe2d8] bg-[#eff7f3] px-3 py-1 text-xs font-semibold capitalize text-[#277255]">{circle.status}</span><h1 className="mt-3 text-3xl font-semibold tracking-[-0.03em]">{circle.name}</h1><p className="mt-2 text-sm text-[#6f7b76]">{circle.frequency} savings circle · Starts {new Date(`${circle.start_date}T00:00:00`).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}</p></div></div>
     <section className="mt-8 grid gap-4 sm:grid-cols-3"><Card label="Contribution" value={money.format(circle.contribution_amount)} /><Card label="Payout per cycle" value={money.format(payout)} /><Card label="Members" value={`${joinedMembers} of ${circle.member_limit}`} /></section>

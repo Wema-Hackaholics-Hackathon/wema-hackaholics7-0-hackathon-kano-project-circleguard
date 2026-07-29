@@ -41,5 +41,5 @@ async function handle(_request: Request, circleId: string, cycleNumber: number, 
   }
   const approvals = Object.values(override?.votes ?? {}).filter((vote) => vote === "approve").length;
   const rejections = Object.values(override?.votes ?? {}).filter((vote) => vote === "reject").length;
-  return Response.json({ viewerIsBeneficiary: user.id === beneficiary.profile_id, override: override ? { ...override, votes: undefined, approvals, rejections, requiredApprovals: Math.max(1, Math.ceil((members.length - 1) * 0.75)), currentUserVote: override.votes[user.id] ?? null, isBeneficiary: user.id === beneficiary.profile_id } : null });
+  return Response.json({ viewerIsBeneficiary: user.id === beneficiary.profile_id, override: override ? { ...override, votes: undefined, approvals, rejections, requiredApprovals: Math.max(1, Math.floor((members.length - 1) / 2) + 1), currentUserVote: override.votes[user.id] ?? null, isBeneficiary: user.id === beneficiary.profile_id } : null });
 }

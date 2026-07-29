@@ -15,12 +15,13 @@ export function CircleLiveRefresh({ circleId, initialVersion }: { circleId: stri
       if (checking || document.visibilityState !== "visible") return;
       checking = true;
       try {
-        const [{ data: circle }, { data: members }] = await Promise.all([
+        const [{ data: circle }, { data: members }, { data: latestCycle }] = await Promise.all([
           supabase.from("circles").select("status").eq("id", circleId).maybeSingle(),
           supabase.from("circle_members").select("profile_id,status,payout_position").eq("circle_id", circleId).in("status", ["active", "invited"]),
+          supabase.from("circle_cycles").select("cycle_number").eq("circle_id", circleId).order("cycle_number", { ascending: false }).limit(1).maybeSingle(),
         ]);
         if (!circle) return;
-        const nextVersion = circleLiveVersion(circle.status, members ?? []);
+        const nextVersion = circleLiveVersion(circle.status, members ?? [], latestCycle?.cycle_number ?? 0);
         if (nextVersion !== currentVersion) {
           currentVersion = nextVersion;
           router.refresh();

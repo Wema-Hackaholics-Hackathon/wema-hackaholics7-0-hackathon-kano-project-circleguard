@@ -32,7 +32,7 @@ export function voteOnGuardOverride(circleId: string, cycleNumber: number, voter
   current.votes[voterId] = vote;
   const approvals = Object.values(current.votes).filter((item) => item === "approve").length;
   const rejections = Object.values(current.votes).filter((item) => item === "reject").length;
-  const required = Math.max(1, Math.ceil(eligibleVoters * 0.75));
+  const required = Math.max(1, Math.floor(eligibleVoters / 2) + 1);
   if (approvals >= required) current.status = "approved";
   else if (rejections > eligibleVoters - required) current.status = "rejected";
   overrides.set(key(circleId, cycleNumber), current);

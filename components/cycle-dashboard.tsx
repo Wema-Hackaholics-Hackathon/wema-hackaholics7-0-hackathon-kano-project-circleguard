@@ -60,7 +60,7 @@ export function CycleDashboard({
     : [];
   const guardPlan = latestCycle ? guardPlans.find((plan) => plan.cycle_id === latestCycle.id) : undefined;
   const savedOverride = latestCycle ? getGuardOverride(circleId, latestCycle.cycle_number) : undefined;
-  const initialOverride = savedOverride ? { reason: savedOverride.reason, status: savedOverride.status, approvals: Object.values(savedOverride.votes).filter((vote) => vote === "approve").length, rejections: Object.values(savedOverride.votes).filter((vote) => vote === "reject").length, requiredApprovals: Math.max(1, Math.ceil((memberCount - 1) * 0.75)), currentUserVote: savedOverride.votes[currentUserId] ?? null, isBeneficiary: savedOverride.beneficiaryId === currentUserId } : null;
+  const initialOverride = savedOverride ? { reason: savedOverride.reason, status: savedOverride.status, approvals: Object.values(savedOverride.votes).filter((vote) => vote === "approve").length, rejections: Object.values(savedOverride.votes).filter((vote) => vote === "reject").length, requiredApprovals: Math.max(1, Math.floor((memberCount - 1) / 2) + 1), currentUserVote: savedOverride.votes[currentUserId] ?? null, isBeneficiary: savedOverride.beneficiaryId === currentUserId } : null;
   const money = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 });
 
   return <section className="mt-5 overflow-hidden rounded-2xl border border-[#e1e5e2] bg-white">
