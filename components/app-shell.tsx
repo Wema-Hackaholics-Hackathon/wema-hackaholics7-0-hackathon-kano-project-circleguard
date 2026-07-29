@@ -12,6 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import { signOut } from "@/app/dashboard/actions";
+import { PendingButton } from "@/components/pending-button";
 
 const primary = [
   { label: "Overview", href: "/dashboard", icon: Home },
@@ -49,7 +50,7 @@ export function AppShell({
             ]} active={active} />
           </nav>
           <form action={signOut} className="mt-auto">
-            <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#65716c] hover:bg-[#f1f3f2] hover:text-[#17211d]"><LogOut size={18} /> Log out</button>
+            <PendingButton pendingLabel="Logging out…" className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#65716c] hover:bg-[#f1f3f2] hover:text-[#17211d]"><LogOut size={18} /> Log out</PendingButton>
           </form>
         </aside>
         <div className="min-h-screen min-w-0 flex-1 bg-[#fafbfa] lg:h-full lg:min-h-0 lg:overflow-y-auto">

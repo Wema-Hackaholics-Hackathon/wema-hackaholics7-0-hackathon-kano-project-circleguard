@@ -1,9 +1,11 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { CalendarDays, Check, ShieldCheck, Users } from "lucide-react";
 import { createClient } from "@/utils/supabase/server";
 import { acceptInvitation } from "./actions";
 import { JoinApprovalWatcher } from "@/components/join-approval-watcher";
 import { checkJoinEligibility } from "@/lib/demo-banking/join-eligibility";
+import { PendingButton } from "@/components/pending-button";
 
 type Invite = { circle_id: string; circle_name: string; contribution_amount: number; frequency: string; member_limit: number; start_date: string; proposed_payout_position: number | null; expires_at: string; status: string };
 
@@ -35,9 +37,9 @@ export default async function JoinPage({ params, searchParams }: { params: Promi
       <div className="grid gap-4 p-6 sm:grid-cols-2"><Detail icon={<Users size={18} />} label="Members" value={`${invite.member_limit} people`} /><Detail icon={<CalendarDays size={18} />} label="Frequency" value={invite.frequency} /><Detail icon={<Check size={18} />} label="Your contribution" value={money.format(invite.contribution_amount)} /><Detail icon={<ShieldCheck size={18} />} label="Payout each cycle" value={money.format(payout)} /></div>
       {query.requested === "1" ? <div className="mx-6 rounded-2xl border border-[#cfe2d8] bg-[#f0f7f3] p-5 text-center"><span className="mx-auto grid size-10 place-items-center rounded-full bg-[#2b7659] text-white"><Check size={19} /></span><h2 className="mt-3 font-semibold text-[#244638]">Request sent</h2><p className="mt-2 text-sm text-[#607169]">This page will open the circle automatically after approval.</p><JoinApprovalWatcher /></div> : <div className={`mx-6 rounded-2xl border p-5 text-sm leading-6 ${eligibility.status === "not_eligible" ? "border-red-200 bg-red-50 text-red-700" : "border-[#dce6e1] bg-[#f4f8f6] text-[#52635b]"}`}><b className={eligibility.status === "not_eligible" ? "text-red-800" : "text-[#244638]"}>{eligibility.label}</b><p className="mt-1">{eligibility.message}</p><p className="mt-2 text-xs opacity-75">Only this result is shared. Your balance and transactions remain private.</p></div>}
       {query.error && <p className="mx-6 mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{query.error === "not_eligible" ? "Your private affordability check did not pass for this contribution amount." : "We could not accept this invitation. It may already be used."}</p>}
-      {query.requested !== "1" && <form action={acceptInvitation} className="p-6"><input type="hidden" name="token" value={token} /><button disabled={eligibility.status === "not_eligible"} className="w-full rounded-xl bg-[#123f31] px-5 py-3.5 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45">{eligibility.status === "not_eligible" ? "Not eligible to request" : "Request to join circle"}</button></form>}
+      {query.requested !== "1" && <form action={acceptInvitation} className="p-6"><input type="hidden" name="token" value={token} /><PendingButton disabled={eligibility.status === "not_eligible"} pendingLabel="Checking and sending…" className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#123f31] px-5 py-3.5 font-semibold text-white">{eligibility.status === "not_eligible" ? "Not eligible to request" : "Request to join circle"}</PendingButton></form>}
     </section></div></main>;
 }
 
 function Detail({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) { return <div className="flex gap-3 rounded-xl border border-[#e6e9e7] p-4"><span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[#eef3f0] text-[#2b7659]">{icon}</span><div><p className="text-xs text-[#7d8984]">{label}</p><p className="mt-1 font-semibold capitalize">{value}</p></div></div>; }
-function InvalidInvite() { return <main className="grid min-h-screen place-items-center bg-[#f4f5f3] p-5 text-center"><div><h1 className="text-2xl font-semibold">Invitation unavailable</h1><p className="mt-2 text-[#6f7b76]">This link is invalid, expired, or already used.</p></div></main>; }
+function InvalidInvite() { return <main className="grid min-h-screen place-items-center bg-[#f4f5f3] p-5 text-center"><div><h1 className="text-2xl font-semibold">Invitation unavailable</h1><p className="mt-2 text-[#6f7b76]">This link is invalid, expired, or already used.</p><Link href="/dashboard" className="mt-6 inline-flex rounded-xl bg-[#123f31] px-5 py-3 text-sm font-semibold text-white">Go to home</Link></div></main>; }
