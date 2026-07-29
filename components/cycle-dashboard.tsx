@@ -1,5 +1,7 @@
 import { AlertTriangle, CheckCircle2, Clock3, ShieldCheck, TrendingUp } from "lucide-react";
 import { CycleSimulator } from "@/components/cycle-simulator";
+import { GuardOverridePanel } from "@/components/guard-override-panel";
+import { getGuardOverride } from "@/lib/demo-banking/override-store";
 
 type Cycle = { id: string; cycle_number: number; due_date: string };
 type Assessment = {
@@ -33,6 +35,7 @@ export function CycleDashboard({
   circleId,
   isAdmin,
   memberCount,
+  currentUserId,
   cycles,
   assessments,
   contributions,
@@ -43,6 +46,7 @@ export function CycleDashboard({
   circleId: string;
   isAdmin: boolean;
   memberCount: number;
+  currentUserId: string;
   cycles: Cycle[];
   assessments: Assessment[];
   contributions: Contribution[];
@@ -55,6 +59,8 @@ export function CycleDashboard({
     ? assessments.filter((item) => item.cycle_id === latestCycle.id)
     : [];
   const guardPlan = latestCycle ? guardPlans.find((plan) => plan.cycle_id === latestCycle.id) : undefined;
+  const savedOverride = latestCycle ? getGuardOverride(circleId, latestCycle.cycle_number) : undefined;
+  const initialOverride = savedOverride ? { reason: savedOverride.reason, status: savedOverride.status, approvals: Object.values(savedOverride.votes).filter((vote) => vote === "approve").length, rejections: Object.values(savedOverride.votes).filter((vote) => vote === "reject").length, requiredApprovals: Math.max(1, Math.ceil((memberCount - 1) * 0.75)), currentUserVote: savedOverride.votes[currentUserId] ?? null, isBeneficiary: savedOverride.beneficiaryId === currentUserId } : null;
   const money = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 });
 
   return <section className="mt-5 overflow-hidden rounded-2xl border border-[#e1e5e2] bg-white">
@@ -83,6 +89,7 @@ export function CycleDashboard({
         </div>
         <div className="grid gap-3 p-5 sm:grid-cols-3"><GuardAmount label="Gross payout" value={money.format(guardPlan.gross_payout)} /><GuardAmount label="Guard reserve" value={money.format(guardPlan.reserve_amount)} /><GuardAmount label="Released to member" value={money.format(guardPlan.net_payout)} strong /></div>
         <div className="px-5 pb-5"><p className="text-sm leading-6 text-[#596760]">{guardPlan.explanation}</p>{guardPlan.protected_cycles > 0 && <p className="mt-2 text-xs font-semibold text-[#365c4c]">{guardPlan.status === "released" ? `Next ${guardPlan.protected_cycles} contribution${guardPlan.protected_cycles === 1 ? "" : "s"} automatically covered by the reserve.` : "The reserve activates automatically once all current contributions are complete."}</p>}</div>
+        <GuardOverridePanel circleId={circleId} cycleNumber={latestCycle.cycle_number} riskLevel={guardPlan.risk_level} fullPayout={money.format(guardPlan.gross_payout)} initialOverride={initialOverride} initialViewerIsBeneficiary={guardPlan.beneficiary_id === currentUserId} />
       </div>}
       <div className="divide-y divide-[#edf0ee]">
         {latestAssessments.map((assessment) => {
@@ -93,7 +100,7 @@ export function CycleDashboard({
             <div>
               <p className="font-semibold">{memberNames[assessment.profile_id] ?? "Circle member"}</p>
               <p className="mt-1 text-xs capitalize text-[#78847f]">Inflows: {assessment.inflow_trend.replaceAll("_", " ")} · {latestCycle.cycle_number === 1 ? "No previous circle payments" : `Previous on-time rate: ${assessment.on_time_rate}%`}</p>
-              <p className="mt-1 text-xs text-[#78847f]">{assessment.reasons.filter((reason) => reason.startsWith("Contribution is") || reason.startsWith("Current balance")).join(" · ")}</p>
+              <p className="mt-1 text-xs text-[#78847f]">{assessment.reasons.filter((reason) => reason.startsWith("Affordability is") || reason.startsWith("Cash buffer is")).join(" · ")}</p>
             </div>
             <div className="flex items-center gap-2">
               <span className={`grid size-8 place-items-center rounded-full ${display.className}`}>{display.icon}</span>

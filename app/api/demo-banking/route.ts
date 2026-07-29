@@ -2,6 +2,8 @@ import { analyzeAccountTrend } from "@/lib/open-banking/trend-engine";
 import { availableBalanceForCycle, demoBankProfiles, getDemoProfile, transactionsForCycles } from "@/lib/demo-banking/profiles";
 import { createClient } from "@/utils/supabase/server";
 import { guardProtectedCycles, guardRiskLevel, payoutRecipient } from "@/lib/demo-banking/guard-engine";
+import type { TrendResult } from "@/lib/open-banking/types";
+import { isGuardOverrideApproved } from "@/lib/demo-banking/override-store";
 
 export async function GET(request: Request) {
   const supabase = await createClient();
@@ -30,7 +32,7 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  const body = await request.json() as { action?: string; circleId?: string; profileKey?: string; contributionAmount?: number };
+  const body = await request.json() as { action?: string; circleId?: string; profileKey?: string; contributionAmount?: number; demoScenario?: string };
   if (body.action === "connect") {
     const profile = getDemoProfile(body.profileKey ?? "");
     if (!profile) return Response.json({ error: "Choose a demo account" }, { status: 400 });
@@ -85,14 +87,17 @@ export async function POST(request: Request) {
     const cycleNumber = (latest?.cycle_number ?? 0) + 1;
     if (cycleNumber > 8) return Response.json({ error: "All 8 demo cycles have been simulated." }, { status: 400 });
     const dueDate = nextDueDate(circle.start_date, circle.frequency, cycleNumber);
+    const beneficiary = payoutRecipient(members, cycleNumber)!;
+    const demoScenario = ["green", "amber", "red"].includes(body.demoScenario ?? "") ? body.demoScenario as "green" | "amber" | "red" : "auto";
     const { data: cycle, error: cycleError } = await supabase.from("circle_cycles").insert({ circle_id: body.circleId, cycle_number: cycleNumber, due_date: dueDate, created_by: user.id }).select("id").single();
     if (cycleError || !cycle) return Response.json({ error: "Run the demo simulator SQL patch in Supabase first." }, { status: 500 });
     const trends = new Map<string, ReturnType<typeof analyzeAccountTrend>>();
     for (const connection of resolvedConnections) {
       const profile = getDemoProfile(connection.profile_key);
       if (!profile) continue;
-      const coveredByGuard = hasGuardCoverage(connection.user_id, cycleNumber, members, resolvedConnections, Number(circle.contribution_amount));
-      const outcome = coveredByGuard ? "on_time" : profile.outcomes[cycleNumber - 1];
+      const coveredByGuard = hasGuardCoverage(body.circleId, connection.user_id, cycleNumber, members, resolvedConnections, Number(circle.contribution_amount));
+      const forcedOutcome = demoScenario === "green" ? "on_time" : demoScenario === "amber" ? "late" : demoScenario === "red" ? "failed" : null;
+      const outcome = coveredByGuard ? "on_time" : connection.user_id === beneficiary.profile_id && forcedOutcome ? forcedOutcome : profile.outcomes[cycleNumber - 1];
       // Predict this cycle using only information that existed before its due date.
       // The current cycle's simulated outcome must not influence its own prediction.
       const previousTransactions = transactionsForCycles(
@@ -101,19 +106,38 @@ export async function POST(request: Request) {
         cycleNumber - 1,
       );
       const contributionAmount = Number(circle.contribution_amount);
-      const trend = analyzeAccountTrend(previousTransactions, "active", { contributionAmount, availableBalance: availableBalanceForCycle(profile, contributionAmount, cycleNumber - 1) });
+      const analyzedTrend = analyzeAccountTrend(previousTransactions, "active", { contributionAmount, availableBalance: availableBalanceForCycle(profile, contributionAmount, cycleNumber - 1) });
+      const trend = connection.user_id === beneficiary.profile_id ? applyDemoScenario(analyzedTrend, demoScenario) : analyzedTrend;
       trends.set(connection.user_id, trend);
       const paidAt = outcome === "failed" ? null : paymentDate(dueDate, outcome);
       await supabase.from("demo_contributions").insert({ cycle_id: cycle.id, circle_id: body.circleId, profile_id: connection.user_id, amount: circle.contribution_amount, outcome, paid_at: paidAt });
-      await supabase.from("readiness_assessments").insert({ cycle_id: cycle.id, circle_id: body.circleId, profile_id: connection.user_id, score: trend.score, readiness: trend.readiness, inflow_trend: trend.inflowTrend, on_time_rate: trend.onTimeRate, reasons: trend.reasons });
+      await supabase.from("readiness_assessments").insert({ cycle_id: cycle.id, circle_id: body.circleId, profile_id: connection.user_id, score: trend.score, readiness: trend.readiness, inflow_trend: trend.inflowTrend, on_time_rate: trend.onTimeRate, reasons: sharedRiskReasons(trend) });
     }
-    const beneficiary = payoutRecipient(members, cycleNumber)!;
     const riskLevel = guardRiskLevel(trends.get(beneficiary.profile_id)?.readiness);
     const protectedCycles = guardProtectedCycles(riskLevel, cycleNumber);
     return Response.json({ cycleNumber, connectedMembers: resolvedConnections.length, riskLevel, protectedCycles });
   }
 
   return Response.json({ error: "Unknown action" }, { status: 400 });
+}
+
+function applyDemoScenario(trend: TrendResult, scenario: "auto" | "green" | "amber" | "red"): TrendResult {
+  if (scenario === "auto") return trend;
+  if (scenario === "green") return { ...trend, score: 90, readiness: "ready", inflowTrend: "stable", onTimeRate: 100, failedContributions: 0, contributionBurden: 0.12, balanceCoverage: 3 };
+  if (scenario === "amber") return { ...trend, score: 65, readiness: "protection_recommended", inflowTrend: "reducing", onTimeRate: 70, failedContributions: 0, contributionBurden: 0.34, balanceCoverage: 0.8 };
+  return { ...trend, score: 38, readiness: "action_required", inflowTrend: "reducing", onTimeRate: 40, failedContributions: 2, contributionBurden: 0.58, balanceCoverage: 0.3 };
+}
+
+function sharedRiskReasons(trend: TrendResult) {
+  const affordability = trend.contributionBurden === null ? "not assessed" : trend.contributionBurden <= 0.2 ? "comfortable" : trend.contributionBurden <= 0.35 ? "moderate" : "high";
+  const buffer = trend.balanceCoverage === null ? "not assessed" : trend.balanceCoverage >= 2 ? "strong" : trend.balanceCoverage >= 1 ? "adequate" : "low";
+  const reliability = trend.failedContributions > 0 ? "concerning" : trend.onTimeRate >= 80 || trend.completedContributions === 0 ? "good" : "mixed";
+  return [
+    `Inflow pattern is ${trend.inflowTrend.replaceAll("_", " ")}`,
+    `Affordability is ${affordability}`,
+    `Cash buffer is ${buffer}`,
+    `Payment reliability is ${reliability}`,
+  ];
 }
 
 function publicProfile(profile: ReturnType<typeof getDemoProfile> & {}, availableBalance = profile?.openingBalance ?? 0) {
@@ -151,6 +175,7 @@ function resolveDemoConnections(
 }
 
 function hasGuardCoverage(
+  circleId: string,
   profileId: string,
   cycleNumber: number,
   members: Array<{ profile_id: string; payout_position: number | null }>,
@@ -158,6 +183,7 @@ function hasGuardCoverage(
   contributionAmount: number,
 ) {
   for (let sourceCycle = Math.max(1, cycleNumber - 2); sourceCycle < cycleNumber; sourceCycle += 1) {
+    if (isGuardOverrideApproved(circleId, sourceCycle)) continue;
     const beneficiary = payoutRecipient(members, sourceCycle);
     if (!beneficiary || beneficiary.profile_id !== profileId) continue;
     const connection = connections.find((item) => item.user_id === profileId);
