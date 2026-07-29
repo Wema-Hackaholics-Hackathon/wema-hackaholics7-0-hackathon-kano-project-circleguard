@@ -43,3 +43,17 @@ export async function rejectMember(formData: FormData) {
   if (error) redirect(`/circles/${circleId}?error=reject_failed`);
   revalidatePath(`/circles/${circleId}`);
 }
+
+export async function removeMember(formData: FormData) {
+  const circleId = String(formData.get("circle_id") ?? "");
+  const profileId = String(formData.get("profile_id") ?? "");
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("remove_circle_member", {
+    p_circle_id: circleId,
+    p_profile_id: profileId,
+  });
+  if (error) redirect(`/circles/${circleId}?error=remove_failed`);
+  revalidatePath(`/circles/${circleId}`);
+  revalidatePath("/circles");
+  revalidatePath("/dashboard");
+}
