@@ -31,6 +31,9 @@ export type MandateStatus = "active" | "pending" | "revoked" | "expired" | "fail
 export type TrendResult = {
   inflowTrend: "growing" | "stable" | "reducing" | "insufficient_data";
   monthlyInflows: Array<{ month: string; amount: number }>;
+  averageMonthlyInflow: number;
+  contributionBurden: number | null;
+  balanceCoverage: number | null;
   onTimeRate: number;
   completedContributions: number;
   failedContributions: number;

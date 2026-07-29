@@ -49,3 +49,14 @@ export function transactionsForCycles(profile: DemoBankProfile, contributionAmou
   }
   return transactions;
 }
+
+export function availableBalanceForCycle(profile: DemoBankProfile, contributionAmount: number, cycleCount: number) {
+  let balance = profile.openingBalance;
+  const count = Math.max(0, Math.min(cycleCount, profile.inflows.length));
+  for (let index = 0; index < count; index += 1) {
+    const outcome = profile.outcomes[index];
+    const retainedIncome = profile.inflows[index] * (outcome === "failed" ? 0.01 : outcome === "late" ? 0.02 : 0.05);
+    balance += retainedIncome - (outcome === "failed" ? 0 : contributionAmount);
+  }
+  return Math.max(0, Math.round(balance));
+}
