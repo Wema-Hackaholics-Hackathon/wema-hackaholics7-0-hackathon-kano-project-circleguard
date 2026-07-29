@@ -19,5 +19,5 @@ export async function acceptInvitation(formData: FormData) {
 
   const { error } = await supabase.rpc("accept_circle_invitation", { p_token: token });
   if (error) redirect(`/join/${token}?error=accept_failed`);
-  redirect(`/circles/${circleId}`);
+  redirect(`/join/${token}?requested=1`);
 }
