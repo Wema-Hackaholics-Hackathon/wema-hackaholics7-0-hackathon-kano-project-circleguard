@@ -8,6 +8,7 @@ export async function acceptInvitation(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect(`/auth?next=/join/${token}`);
+  if (!user.user_metadata.demo_bank_profile_key) redirect(`/bank?next=/join/${token}`);
 
   const { data: invitation, error: invitationError } = await supabase.rpc(
     "get_invitation_by_token",

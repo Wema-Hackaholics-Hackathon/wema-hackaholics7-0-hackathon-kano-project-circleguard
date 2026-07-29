@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { ArrowRight, CalendarDays, CircleDollarSign, Plus, Users } from "lucide-react";
+import { CircleDollarSign, Plus } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { createClient } from "@/utils/supabase/server";
+import { CircleList } from "@/components/circle-list";
 
 type Circle = {
   id: string;
@@ -11,20 +12,17 @@ type Circle = {
   member_limit: number;
   start_date: string;
   status: string;
+  created_by: string;
 };
 
 export default async function CirclesPage() {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
   const { data } = await supabase
     .from("circles")
-    .select("id,name,contribution_amount,frequency,member_limit,start_date,status")
+    .select("id,name,contribution_amount,frequency,member_limit,start_date,status,created_by")
     .order("created_at", { ascending: false });
   const circles = (data ?? []) as Circle[];
-  const money = new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-    maximumFractionDigits: 0,
-  });
 
   return (
     <AppShell active="My circles">
@@ -43,22 +41,10 @@ export default async function CirclesPage() {
               <Link href="/circles/new" className="mt-6 flex items-center gap-2 rounded-xl bg-[#123f31] px-5 py-3 text-sm font-semibold text-white"><Plus size={16} /> Create your first circle</Link>
             </section>
           ) : (
-            <section className="mt-8 grid gap-5 lg:grid-cols-2">
-              {circles.map((circle) => {
-                const payout = Number(circle.contribution_amount) * circle.member_limit;
-                return <Link key={circle.id} href={`/circles/${circle.id}`} className="group overflow-hidden rounded-2xl border border-[#e1e5e2] bg-white hover:border-[#bdccc5] hover:shadow-[0_12px_35px_rgba(20,48,37,0.07)]">
-                  <div className="flex items-start justify-between border-b border-[#e9ecea] p-5"><div><span className="rounded-full border border-[#d5e5dd] bg-[#f1f7f4] px-2.5 py-1 text-[11px] font-semibold capitalize text-[#2a7156]">{circle.status}</span><h2 className="mt-3 text-xl font-semibold">{circle.name}</h2><p className="mt-1 text-sm capitalize text-[#78847f]">{circle.frequency} contributions</p></div><ArrowRight size={19} className="mt-1 text-[#9ba59f] transition group-hover:translate-x-1 group-hover:text-[#2b7659]" /></div>
-                  <div className="grid grid-cols-2 gap-4 p-5 text-sm"><Info icon={<CircleDollarSign size={16} />} label="Contribution" value={money.format(circle.contribution_amount)} /><Info icon={<Users size={16} />} label="Members" value={`Up to ${circle.member_limit}`} /><Info icon={<CalendarDays size={16} />} label="Starts" value={new Date(`${circle.start_date}T00:00:00`).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })} /><Info icon={<CircleDollarSign size={16} />} label="Cycle payout" value={money.format(payout)} /></div>
-                </Link>;
-              })}
-            </section>
+            <CircleList circles={circles.map((circle) => ({ ...circle, canDelete: circle.created_by === user?.id && ["draft", "forming"].includes(circle.status) }))} />
           )}
         </div>
       </main>
     </AppShell>
   );
-}
-
-function Info({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return <div><p className="flex items-center gap-2 text-xs text-[#89948f]">{icon}{label}</p><p className="mt-1.5 font-semibold">{value}</p></div>;
 }

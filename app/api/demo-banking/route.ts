@@ -7,17 +7,22 @@ export async function GET(request: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const circleId = new URL(request.url).searchParams.get("circleId");
-  const { data: connection } = circleId
+  let { data: connection } = circleId
     ? await supabase.from("demo_bank_connections").select("profile_key").eq("circle_id", circleId).eq("user_id", user.id).maybeSingle()
     : { data: null };
-  return Response.json({ connectedProfileKey: connection?.profile_key ?? null, profiles: demoBankProfiles.map((profile) => ({
+  const globalProfileKey = user.user_metadata.demo_bank_profile_key as string | undefined;
+  if (circleId && !connection && globalProfileKey) {
+    const { data } = await supabase.from("demo_bank_connections").upsert({ circle_id: circleId, user_id: user.id, profile_key: globalProfileKey }, { onConflict: "circle_id,user_id" }).select("profile_key").maybeSingle();
+    connection = data;
+  }
+  return Response.json({ profiles: demoBankProfiles.map((profile) => ({
     key: profile.key,
     name: profile.name,
     bankName: profile.bankName,
     accountNumber: profile.accountNumber,
     occupation: profile.occupation,
     openingBalance: profile.openingBalance,
-  })) });
+  })), connectedProfileKey: connection?.profile_key ?? globalProfileKey ?? null });
 }
 
 export async function POST(request: Request) {
@@ -25,32 +30,42 @@ export async function POST(request: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const body = await request.json() as { action?: string; circleId?: string; profileKey?: string; contributionAmount?: number };
-  if (!body.circleId) return Response.json({ error: "Circle is required" }, { status: 400 });
-
   if (body.action === "connect") {
     const profile = getDemoProfile(body.profileKey ?? "");
     if (!profile) return Response.json({ error: "Choose a demo account" }, { status: 400 });
-    const { error } = await supabase.from("demo_bank_connections").upsert({ circle_id: body.circleId, user_id: user.id, profile_key: profile.key }, { onConflict: "circle_id,user_id" });
-    if (error) return Response.json({ error: "Run the demo simulator SQL patch in Supabase first." }, { status: 500 });
+    const { error: metadataError } = await supabase.auth.updateUser({ data: { demo_bank_profile_key: profile.key } });
+    if (metadataError) return Response.json({ error: "Could not save the bank connection." }, { status: 500 });
+    if (body.circleId) {
+      const { error } = await supabase.from("demo_bank_connections").upsert({ circle_id: body.circleId, user_id: user.id, profile_key: profile.key }, { onConflict: "circle_id,user_id" });
+      if (error) return Response.json({ error: "Run the demo simulator SQL patch in Supabase first." }, { status: 500 });
+    }
     return Response.json({ connected: true });
   }
 
   if (body.action === "disconnect") {
-    const { error } = await supabase.from("demo_bank_connections").delete().eq("circle_id", body.circleId).eq("user_id", user.id);
+    await supabase.auth.updateUser({ data: { demo_bank_profile_key: null } });
+    let deletion = supabase.from("demo_bank_connections").delete().eq("user_id", user.id);
+    if (body.circleId) deletion = deletion.eq("circle_id", body.circleId);
+    const { error } = await deletion;
     if (error) return Response.json({ error: "Could not disconnect this account. Run the updated simulator SQL patch first." }, { status: 500 });
     return Response.json({ disconnected: true });
   }
 
   if (body.action === "analyze") {
-    const { data: connection } = await supabase.from("demo_bank_connections").select("profile_key").eq("circle_id", body.circleId).eq("user_id", user.id).maybeSingle();
-    const profile = getDemoProfile(connection?.profile_key ?? "");
+    const { data: connection } = body.circleId
+      ? await supabase.from("demo_bank_connections").select("profile_key").eq("circle_id", body.circleId).eq("user_id", user.id).maybeSingle()
+      : { data: null };
+    const profile = getDemoProfile(connection?.profile_key ?? user.user_metadata.demo_bank_profile_key ?? "");
     if (!profile) return Response.json({ error: "Connect a demo account first." }, { status: 400 });
-    const { count } = await supabase.from("circle_cycles").select("id", { count: "exact", head: true }).eq("circle_id", body.circleId);
+    const { count } = body.circleId
+      ? await supabase.from("circle_cycles").select("id", { count: "exact", head: true }).eq("circle_id", body.circleId)
+      : { count: 0 };
     const transactions = transactionsForCycles(profile, Number(body.contributionAmount) || 0, Math.max(count ?? 0, 1));
     return Response.json({ profile: publicProfile(profile), trend: analyzeAccountTrend(transactions, "active") });
   }
 
   if (body.action === "simulate") {
+    if (!body.circleId) return Response.json({ error: "Circle is required" }, { status: 400 });
     const { data: membership } = await supabase.from("circle_members").select("role").eq("circle_id", body.circleId).eq("profile_id", user.id).eq("status", "active").maybeSingle();
     if (membership?.role !== "admin") return Response.json({ error: "Only the circle administrator can simulate a cycle." }, { status: 403 });
     const { data: circle } = await supabase.from("circles").select("contribution_amount,frequency,start_date").eq("id", body.circleId).single();

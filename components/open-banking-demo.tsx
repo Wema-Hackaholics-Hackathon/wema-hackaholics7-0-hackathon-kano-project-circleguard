@@ -7,7 +7,7 @@ import type { TrendResult } from "@/lib/open-banking/types";
 type PublicProfile = { key: string; name: string; bankName: string; accountNumber: string; occupation: string; openingBalance: number };
 type ConnectedProfile = { key: string; name: string; bankName: string; occupation: string; maskedNumber: string; availableBalance: number };
 
-export function OpenBankingDemo({ circleId, contributionAmount }: { circleId: string; contributionAmount: number }) {
+export function OpenBankingDemo({ circleId, contributionAmount, nextPath }: { circleId?: string; contributionAmount: number; nextPath?: string }) {
   const [profiles, setProfiles] = useState<PublicProfile[]>([]);
   const [selected, setSelected] = useState("");
   const [step, setStep] = useState<"select" | "consent" | "connected" | "result">("select");
@@ -19,7 +19,7 @@ export function OpenBankingDemo({ circleId, contributionAmount }: { circleId: st
   useEffect(() => {
     async function load() {
       try {
-        const response = await fetch(`/api/demo-banking?circleId=${encodeURIComponent(circleId)}`);
+        const response = await fetch(`/api/demo-banking${circleId ? `?circleId=${encodeURIComponent(circleId)}` : ""}`);
         const data = await response.json();
         setProfiles(data.profiles ?? []);
         if (data.connectedProfileKey) {
@@ -36,6 +36,7 @@ export function OpenBankingDemo({ circleId, contributionAmount }: { circleId: st
     setLoading(true); setError("");
     const connected = await post({ action: "connect", circleId, profileKey: selected });
     if (!connected.ok) { setLoading(false); return setError(connected.data.error || "Could not connect demo account."); }
+    if (nextPath) { window.location.href = nextPath; return; }
     const analyzed = await post({ action: "analyze", circleId, contributionAmount });
     setLoading(false);
     if (!analyzed.ok) return setError(analyzed.data.error || "Could not analyze demo account.");
@@ -56,7 +57,7 @@ export function OpenBankingDemo({ circleId, contributionAmount }: { circleId: st
   return <section className="overflow-hidden rounded-2xl border border-[#e1e5e2] bg-white">
     <div className="border-b border-[#e7eae8] px-6 py-5"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-xl bg-[#edf4f0] text-[#286d52]"><Landmark size={20} /></span><div><h2 className="font-semibold">Connect a demo bank account</h2><p className="mt-1 text-sm text-[#78847f]">Simulated profiles using the Open Banking Nigeria structure</p></div></div></div>
     <div className="p-6">
-      {step === "select" && <><p className="text-sm leading-6 text-[#65716c]">Choose a fictional bank customer for this CircleGuard user. The account stays connected to this circle after refresh.</p><div className="mt-5 grid gap-3 sm:grid-cols-2">{profiles.map((item) => <button type="button" key={item.key} onClick={() => setSelected(item.key)} className={`rounded-xl border p-4 text-left transition ${selected === item.key ? "border-[#2b7659] bg-[#f1f7f4] ring-1 ring-[#2b7659]" : "border-[#e3e7e5] hover:bg-[#fafbfa]"}`}><p className="font-semibold">{item.name}</p><p className="mt-1 text-xs text-[#73807a]">{item.bankName} · •••• {item.accountNumber.slice(-4)}</p><p className="mt-2 text-xs text-[#88938e]">{item.occupation}</p></button>)}</div></>}
+      {step === "select" && <><p className="text-sm leading-6 text-[#65716c]">Choose a fictional bank customer for this CircleGuard user. This private connection will be reused across their circles.</p><div className="mt-5 grid gap-3 sm:grid-cols-2">{profiles.map((item) => <button type="button" key={item.key} onClick={() => setSelected(item.key)} className={`rounded-xl border p-4 text-left transition ${selected === item.key ? "border-[#2b7659] bg-[#f1f7f4] ring-1 ring-[#2b7659]" : "border-[#e3e7e5] hover:bg-[#fafbfa]"}`}><p className="font-semibold">{item.name}</p><p className="mt-1 text-xs text-[#73807a]">{item.bankName} · •••• {item.accountNumber.slice(-4)}</p><p className="mt-2 text-xs text-[#88938e]">{item.occupation}</p></button>)}</div></>}
       {step === "consent" && <div className="rounded-2xl border border-[#dbe4df] bg-[#f7faf8] p-6 text-center"><span className="mx-auto grid size-12 place-items-center rounded-full bg-[#123f31] text-white"><LockKeyhole size={21} /></span><h3 className="mt-4 font-semibold">Approve demo consent</h3><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#6d7974]">Allow CircleGuard to read this fictional account’s balance and transaction history for the readiness demonstration.</p></div>}
       {step === "connected" && profile && <div><div className="flex items-center gap-4 rounded-2xl border border-[#d9e3de] bg-[#f7faf8] p-5"><span className="grid size-11 place-items-center rounded-xl bg-white text-[#286d52] shadow-sm"><WalletCards size={21} /></span><div><p className="font-semibold">{profile.bankName}</p><p className="mt-1 text-sm text-[#75817c]">{profile.name} · {profile.maskedNumber}</p></div><span className="ml-auto rounded-full bg-[#e5f4ec] px-3 py-1 text-xs font-semibold text-[#247352]">Connected</span></div><div className="mt-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><p className="text-sm leading-6 text-[#68746f]">This account will participate in future simulated cycles.</p><button type="button" onClick={disconnect} disabled={loading} className="flex shrink-0 items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"><Unplug size={15} /> Disconnect</button></div></div>}
       {error && <p className="mt-5 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}

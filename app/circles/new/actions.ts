@@ -7,6 +7,8 @@ export async function createCircle(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/auth");
+  const bankProfileKey = user.user_metadata.demo_bank_profile_key as string | undefined;
+  if (!bankProfileKey) redirect("/bank?next=/circles/new");
 
   const name = String(formData.get("name") ?? "").trim();
   const contributionAmount = Number(formData.get("contribution_amount"));
@@ -45,6 +47,8 @@ export async function createCircle(formData: FormData) {
     console.error("Circle creation failed", error.code, error.message, error.details);
     redirect(`/circles/new?error=${encodeURIComponent(error.code || "create_failed")}`);
   }
+
+  await supabase.from("demo_bank_connections").upsert({ circle_id: circleId, user_id: user.id, profile_key: bankProfileKey }, { onConflict: "circle_id,user_id" });
 
   redirect(`/circles/${circleId}`);
 }

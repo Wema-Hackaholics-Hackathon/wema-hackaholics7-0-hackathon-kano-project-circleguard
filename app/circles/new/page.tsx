@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, CalendarDays, Check, Info, Users } from "lucide-react";
+import { ArrowLeft, CalendarDays, Check, Info, Users } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { createCircle } from "./actions";
+import { CreateCircleSubmit } from "@/components/create-circle-submit";
 
 export default function NewCirclePage() {
   const [name, setName] = useState("");
@@ -37,7 +38,7 @@ export default function NewCirclePage() {
                 </div>
                 <Field label="Payout order"><div className="grid gap-3 sm:grid-cols-2"><Choice title="Decide later" copy="Set positions after members join" value="decide_later" selected={payoutOrder === "decide_later"} onSelect={setPayoutOrder} /><Choice title="Fixed order" copy="Choose positions during invites" value="fixed" selected={payoutOrder === "fixed"} onSelect={setPayoutOrder} /></div></Field>
               </div>
-              <div className="flex justify-end border-t border-[#e7eae8] bg-[#fafbfa] px-5 py-4 sm:px-7"><button type="submit" className="flex items-center gap-2 rounded-xl bg-[#123f31] px-5 py-3 text-sm font-semibold text-white">Create circle <ArrowRight size={16} /></button></div>
+              <div className="flex justify-end border-t border-[#e7eae8] bg-[#fafbfa] px-5 py-4 sm:px-7"><CreateCircleSubmit /></div>
             </form>
 
             <aside className="overflow-hidden rounded-2xl border border-[#dce3df] bg-white lg:sticky lg:top-8">

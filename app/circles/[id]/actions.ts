@@ -57,3 +57,21 @@ export async function removeMember(formData: FormData) {
   revalidatePath("/circles");
   revalidatePath("/dashboard");
 }
+
+export async function deleteCircle(formData: FormData) {
+  const circleId = String(formData.get("circle_id") ?? "");
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/auth");
+  const { data: circle } = await supabase.from("circles").select("created_by,status").eq("id", circleId).maybeSingle();
+  if (!circle || circle.created_by !== user.id || !["draft", "forming"].includes(circle.status)) redirect(`/circles/${circleId}?error=delete_not_allowed`);
+  if (circle.status === "forming") {
+    const { error: statusError } = await supabase.from("circles").update({ status: "draft" }).eq("id", circleId);
+    if (statusError) redirect(`/circles/${circleId}?error=delete_failed`);
+  }
+  const { data: deleted, error } = await supabase.from("circles").delete().eq("id", circleId).select("id").maybeSingle();
+  if (error || !deleted) redirect(`/circles/${circleId}?error=delete_failed`);
+  revalidatePath("/circles");
+  revalidatePath("/dashboard");
+  redirect("/circles");
+}

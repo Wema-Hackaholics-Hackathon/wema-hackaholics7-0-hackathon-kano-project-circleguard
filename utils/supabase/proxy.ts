@@ -29,5 +29,10 @@ export async function updateSession(request: NextRequest) {
   if (user?.user_metadata.full_name && request.nextUrl.pathname === "/onboarding") {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
+  if (user && request.nextUrl.pathname === "/circles/new" && !user.user_metadata.demo_bank_profile_key) {
+    const bankUrl = new URL("/bank", request.url);
+    bankUrl.searchParams.set("next", "/circles/new");
+    return NextResponse.redirect(bankUrl);
+  }
   return response;
 }

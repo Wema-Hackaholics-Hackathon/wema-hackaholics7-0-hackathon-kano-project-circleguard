@@ -11,6 +11,7 @@ export default async function JoinPage({ params, searchParams }: { params: Promi
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect(`/auth?next=/join/${token}`);
+  if (!user.user_metadata.demo_bank_profile_key) redirect(`/bank?next=/join/${token}`);
   const { data, error } = await supabase.rpc("get_invitation_by_token", { p_token: token });
   const invite = (Array.isArray(data) ? data[0] : data) as Invite | undefined;
   if (error || !invite) return <InvalidInvite />;
