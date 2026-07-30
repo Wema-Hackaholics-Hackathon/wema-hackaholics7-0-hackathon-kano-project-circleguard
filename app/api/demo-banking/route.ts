@@ -76,7 +76,7 @@ export async function POST(request: Request) {
     if (!circle) return Response.json({ error: "Circle not found" }, { status: 404 });
     if (circle.status !== "active") return Response.json({ error: "The circle must be full and active before cycles can be simulated." }, { status: 400 });
     const [{ data: activeMembers }, { data: connections }] = await Promise.all([
-      supabase.from("circle_members").select("profile_id,payout_position,profiles(full_name)").eq("circle_id", body.circleId).eq("status", "active"),
+      supabase.from("circle_members").select("profile_id,payout_position,profiles(full_name)").eq("circle_id", body.circleId).eq("status", "active").order("joined_at", { ascending: true }),
       supabase.from("demo_bank_connections").select("user_id,profile_key").eq("circle_id", body.circleId),
     ]);
     if (!activeMembers?.length) return Response.json({ error: "This circle has no active members." }, { status: 400 });

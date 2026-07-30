@@ -1,38 +1,33 @@
 import Link from "next/link";
 import {
-  Activity,
   CircleDollarSign,
   CreditCard,
-  HelpCircle,
   Home,
   LogOut,
   Plus,
-  Settings,
-  ShieldCheck,
-  Users,
+  UserRound,
 } from "lucide-react";
 import { signOut } from "@/app/dashboard/actions";
 import { PendingButton } from "@/components/pending-button";
+import { createClient } from "@/utils/supabase/server";
 
 const primary = [
   { label: "Overview", href: "/dashboard", icon: Home },
   { label: "My circles", href: "/circles", icon: CircleDollarSign },
-  { label: "Members", href: "/dashboard", icon: Users },
-  { label: "Activity", href: "/dashboard", icon: Activity },
-];
-
-const manage = [
   { label: "Bank connections", href: "/bank", icon: CreditCard },
-  { label: "Privacy & consent", href: "/dashboard", icon: ShieldCheck },
 ];
 
-export function AppShell({
+export async function AppShell({
   children,
   active = "Overview",
 }: {
   children: React.ReactNode;
   active?: string;
 }) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const fullName = String(user?.user_metadata.full_name ?? user?.email?.split("@")[0] ?? "CircleGuard user");
+
   return (
     <div className="min-h-screen bg-[#f4f5f3] text-[#17211d] lg:p-4">
       <div className="mx-auto flex min-h-screen max-w-[1500px] overflow-hidden border-[#e3e7e4] bg-white lg:h-[calc(100vh-2rem)] lg:min-h-0 lg:rounded-[22px] lg:border lg:shadow-[0_18px_60px_rgba(25,46,38,0.08)]">
@@ -41,15 +36,16 @@ export function AppShell({
             <span className="grid size-10 place-items-center rounded-full bg-[#123f31] text-sm font-bold text-white">CG</span>
             <span><strong className="block text-[17px]">CircleGuard</strong><small className="text-xs text-[#84908b]">VERIFIED SAVINGS</small></span>
           </Link>
-          <nav className="mt-8 space-y-7">
+          <nav className="mt-8">
             <NavGroup items={primary} active={active} />
-            <NavGroup title="MANAGE" items={manage} active={active} />
-            <NavGroup title="ACCOUNT" items={[
-              { label: "Settings", href: "/dashboard", icon: Settings },
-              { label: "Help centre", href: "/dashboard", icon: HelpCircle },
-            ]} active={active} />
           </nav>
-          <form action={signOut} className="mt-auto">
+          <div className="mt-auto border-t border-[#edf0ee] pt-4">
+            <div className="flex items-center gap-3 rounded-xl bg-[#f5f7f6] px-3 py-3">
+              <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#dfece6] text-[#225b45]"><UserRound size={17} /></span>
+              <p className="min-w-0 truncate text-sm font-semibold text-[#26332e]">{fullName}</p>
+            </div>
+          </div>
+          <form action={signOut} className="mt-2">
             <PendingButton pendingLabel="Logging out…" className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#65716c] hover:bg-[#f1f3f2] hover:text-[#17211d]"><LogOut size={18} /> Log out</PendingButton>
           </form>
         </aside>

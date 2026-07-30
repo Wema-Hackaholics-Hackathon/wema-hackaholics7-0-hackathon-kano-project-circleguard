@@ -18,7 +18,7 @@ async function handle(_request: Request, circleId: string, cycleNumber: number, 
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const [{ data: membership }, { data: members }, { data: cycle }] = await Promise.all([
     supabase.from("circle_members").select("role").eq("circle_id", circleId).eq("profile_id", user.id).eq("status", "active").maybeSingle(),
-    supabase.from("circle_members").select("profile_id,payout_position").eq("circle_id", circleId).eq("status", "active"),
+    supabase.from("circle_members").select("profile_id,payout_position").eq("circle_id", circleId).eq("status", "active").order("joined_at", { ascending: true }),
     supabase.from("circle_cycles").select("id").eq("circle_id", circleId).eq("cycle_number", cycleNumber).maybeSingle(),
   ]);
   if (!membership || !members?.length || !cycle) return Response.json({ error: "Circle access denied." }, { status: 403 });
