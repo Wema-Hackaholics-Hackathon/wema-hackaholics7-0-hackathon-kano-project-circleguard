@@ -13,7 +13,7 @@
 
 **Backend API:** Integrated into the Next.js application.
 
-**Recorded Demo:** [Add Loom recorded demo link]
+**Recorded Demo:** https://www.loom.com/share/3d06ec4130f7456e90e9a8ccfb1e2283
 
 ## 🎯 The Problem
 
