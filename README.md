@@ -1,4 +1,4 @@
-<img width="148" height="41" alt="image" src="https://github.com/user-attachments/assets/1715896a-1ede-4a22-8cad-192be8ba8fcc" /># CircleGuard
+# CircleGuard
 
 ## Team Members
 
