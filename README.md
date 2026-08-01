@@ -1,11 +1,11 @@
-# CircleGuard
+<img width="148" height="41" alt="image" src="https://github.com/user-attachments/assets/1715896a-1ede-4a22-8cad-192be8ba8fcc" /># CircleGuard
 
 ## Team Members
 
-1. Adelopo Abdullah
-2. Ibrahim Idris
-3. Ahmad Musa
-4. Khalid Jubril Muhammad
+1. Adelopo Abdullah - Lead (09041976621)
+2. Ibrahim Idris - (08109979077)
+3. Ahmad Musa - (07046961233)
+4. Khalid Jubril Muhammad - (08123734694)
 
 ## 🚀 Live Demo
 
